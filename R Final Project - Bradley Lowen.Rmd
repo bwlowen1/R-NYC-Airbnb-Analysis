@@ -1,0 +1,324 @@
+---
+title: "**MSBA 615 - R: Final Project**"
+author: "Bradley Lowen"
+date: "2024-12-10"
+output: html_document
+---
+
+```{r,echo=FALSE, eval=TRUE,warning=FALSE,message=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(dslabs)
+library(tibble)
+library(gridExtra)
+```
+
+## **Importing and Cleaning Up NYC Airbnb Data**
+
+**To begin, I will import the NYC Airbnb data from an Excel file.**
+
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+airbnb <- read_excel("C:/Users/bwlowe01/Desktop/MSBA/MSBA 615 - R for Analytics/AB_NYC_2019.xlsx")
+
+```
+**Then, looking at the data, I can omit some entire columns that do not provide
+data that would help with analysis. The columns "id", "host_id", "name",
+"host_name","latitude","longitude", "last_review", and "reviews_per_month" 
+all do not meaningfully contribute to the analysis of this
+data. The "id" and "host_id" columns are accounted for much more efficiently
+in the "calculated_host_listings_count" column.
+The latitude and longitude location data is redundant due to both the
+"neighbourhood_group" and "neighbourhood" columns, and the "reviews_per_month"
+and "last_review"columns provide data that is not pertinent enough in
+light of the other categories.These would only be useful if you are attempting
+to analyze review trends, or focus specifically on reviews.
+The only caveat to removing "id" is that we should explore the
+data for duplicates before removing this category. Some listings could
+be identical in other ways just by chance.**
+
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+sum(duplicated(airbnb))
+
+#no duplicates found, we can remove "id" and clean the data
+
+airbnbclean <- airbnb |> select(-"id", -"host_id", -"name", -"host_name", -"latitude", -"longitude", -"last_review", -"reviews_per_month")
+
+```
+**Now, I can check the remaining data for NA values and outliers.
+We will check for outliers using the IQR technique, and visualize with a box plot.**
+
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+navalues <- colSums(is.na(airbnbclean))
+navalues
+
+```
+**There are no NA values.**
+
+
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+findoutliers <- function(x) {
+  Q1 <- quantile(x, 0.25, na.rm = TRUE) 
+  Q3 <- quantile(x, 0.75, na.rm = TRUE) 
+  IQR <- Q3 - Q1                       
+  lowerq <- Q1 - 1.5 * IQR        
+  upperq <- Q3 + 1.5 * IQR        
+  return(x < lowerq | x > upperq) 
+}
+
+airbnbclean$outlierprice <- findoutliers(airbnbclean$price)
+airbnbclean$outlierminnights <- findoutliers(airbnbclean$minimum_nights)
+airbnbclean$outlierreviews <- findoutliers(airbnbclean$number_of_reviews)
+airbnbclean$outlieravailability <- findoutliers(airbnbclean$availability_365)
+
+sum(airbnbclean$outlierprice)        
+sum(airbnbclean$outlierminnights) 
+sum(airbnbclean$outlierreviews)     
+sum(airbnbclean$outlieravailability) 
+
+#note that for price, IQR may not count 0 as an outlier, but for our
+#purposes, 0 is not a useful price for analysis, so we will remove it. 
+
+airbnbclean2 <- airbnbclean |>
+  filter(price > 0)
+```
+
+## Visualizing Outliers
+
+**Let's look at the outliers using box plots:**
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+boxplotprice <- ggplot(airbnbclean2, aes(y = price)) +
+  geom_boxplot(fill = "red", width = 5) +
+  labs(title = "Prices", y = "Price") + 
+  theme_minimal()
+
+boxplotminnights <- ggplot(airbnbclean2, aes(y = minimum_nights)) +
+  geom_boxplot(fill = "lightblue", width = 5) +
+  labs(title = "Min Nights", y = "Number of Minimum Nights") +
+  theme_minimal()
+
+boxplotreviews <- ggplot(airbnbclean2, aes(y = number_of_reviews)) +
+  geom_boxplot(fill = "lightgreen", width = 5) +
+  labs(title = "Reviews", y = "Number of Reviews") +
+  theme_minimal()
+
+boxplothost <- ggplot(airbnbclean2, aes(y = calculated_host_listings_count)) +
+  geom_boxplot(fill = "brown", width = 5) +
+  labs(title = "Host Listings", y = "Number of Listings") + 
+  theme_minimal()
+
+boxplotavail <- ggplot(airbnbclean2, aes(y = availability_365)) +
+  geom_boxplot(fill = "orange", width = 5) +
+  labs(title = "Availability", y = "Days of Availability") +
+  theme_minimal()
+
+grid.arrange(boxplotprice, boxplotminnights, boxplotreviews, boxplothost, boxplotavail, ncol = 5)
+
+```
+
+**Now to remove the outliers and temporary columns from the dataset.**
+
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+airbnbnooutliers <- airbnbclean2 |>
+  filter(
+    !outlierprice & 
+    !outlierminnights & 
+    !outlierreviews & 
+    !outlieravailability)
+
+airbnbnooutliers <- airbnbnooutliers |>
+  select(-outlierprice, -outlierminnights, -outlierreviews, -outlieravailability)
+
+```
+
+# **Interpreting the Cleaned Data**
+
+## Price
+
+**Now, we can analyze the price distribution with a histogram and boxplot.**
+
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+ggplot(airbnbnooutliers, aes(x = price)) +
+  geom_histogram(binwidth = 10, fill = "red", color = "black") +
+  ggtitle("Price Distribution (Histogram)") +
+  xlab("Price") +
+  ylab("Count")
+ggplot(airbnbnooutliers, aes(y = price)) +
+  geom_boxplot(fill = "green") +
+  ggtitle("Price Distribution (Boxplot)") +
+  ylab("Price")
+```
+
+
+**From these two plots, we can see that a majority of listings are between
+$50 and $150.**
+
+## Neighborhood Groups
+Let's look at the average price per neighborhood group and the percentage of
+listings per neighborhood group.
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+avgneighborhood <- airbnbnooutliers |>
+  group_by(neighbourhood_group) |>
+  summarise(AvgPrice = mean(price))
+
+ggplot(avgneighborhood, aes(x = reorder(neighbourhood_group, AvgPrice), y = AvgPrice)) +
+  geom_bar(stat = "identity", fill = "orange") +
+  ggtitle("Average Price by Neighborhood Group") +
+  xlab("Neighborhood Group") +
+  ylab("Average Price") +
+  coord_flip()
+
+listbyhood <- airbnbnooutliers |>
+  count(neighbourhood_group) |>
+  arrange(desc(n))
+
+
+listbyhood <- listbyhood |>
+  mutate(Percentage = round(n / sum(n) * 100, 1)) 
+
+listbyhood$label <- paste0(listbyhood$neighbourhood_group, " (", listbyhood$Percentage, "%)")
+
+ggplot(listbyhood, aes(x = "", y = n, fill = label)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +  
+  theme_void() +  
+  labs(
+    title = "Percentage of Listings by Neighborhood Group",
+    fill = "Neighborhood Group (with %)") +
+  scale_fill_discrete(name = "Neighborhood Group")
+```
+
+**As we can see from the histogram, Manhattan has the highest average price, 
+followed by, in order, Brooklyn, Queens, Staten Island, and the Bronx.
+From our pie chart, we see that Brooklyn has the highest number of listings,
+followed by, in order, Manhattan, Queens, the Bronx, and Staten Island.
+Brooklyn and Manhattan comprise over 83% of all listings.**
+
+## Neighborhoods
+**To go into even finer detail, we can look at some of the top neighborhoods
+for Airbnb listings.** 
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+topneighborhoods <- airbnbnooutliers |>
+  count(neighbourhood) |>
+  arrange(desc(n)) |>
+  top_n(10, n)
+
+ggplot(topneighborhoods, aes(x = reorder(neighbourhood, n), y = n)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Top 10 Neighborhoods by Number of Listings",
+    x = "Neighborhood",
+    y = "Number of Listings")
+
+topneighborhoodprices <- airbnbnooutliers |>
+  group_by(neighbourhood) |>
+  summarise(AvgPrice = mean(price)) |>
+  arrange(desc(AvgPrice)) |>
+  top_n(10, AvgPrice)
+
+ggplot(topneighborhoodprices, aes(x = reorder(neighbourhood, AvgPrice), y = AvgPrice)) +
+  geom_bar(stat = "identity", fill = "brown") +
+  coord_flip() +
+  labs(
+    title = "Top 10 Neighborhoods by Average Price",
+    x = "Neighborhood",
+    y = "Average Price"
+  ) +
+  theme_minimal()
+```
+
+**As we can see comparing these two plots, there is no overlap whatsoever between
+the top 10 neighborhoods for listings and the top 10 neighborhoods by average
+price. The top 10 neighborhoods by listing count show us the areas with the
+highest demand, while the average price top 10 helps us target more affluent
+areas.** 
+
+##  Room Type and Average Price
+
+**Let's examine the average price of an Airbnb by room type.**
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+
+avgpriceroom <- airbnbnooutliers |>
+  group_by(room_type) |>
+  summarise(AvgPrice = mean(price))
+
+print(avgpriceroom)
+
+ggplot(avgpriceroom, aes(x = room_type, y = AvgPrice, fill = room_type)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Average Price by Room Type") +
+  xlab("Room Type") +
+  ylab("Average Price") +
+  theme_minimal()
+```
+
+
+**As we can see, an entire home/apartment is the most expensive option, by a wide
+margin. Private rooms come in second, while shared rooms are cheapest.**
+
+## Availability
+
+**Let's examine room availability.**
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+ggplot(airbnbnooutliers, aes(x = availability_365)) +
+  geom_histogram(binwidth = 20, fill = "purple", color = "black") +
+  ggtitle("Availability Distribution") +
+  xlab("Availability (Days per Year)") +
+  ylab("Number of Listings")
+
+
+```
+
+**From our availability distribution, we can see that NYC has a high demand
+for temporary housing, with over half of the listings already having 
+no availability.**
+
+
+# Predicting Price with Linear Regression
+
+```{r,echo=TRUE, eval=TRUE,warning=FALSE,message=FALSE}
+modeldata <- airbnbnooutliers |>
+  select(price, number_of_reviews, availability_365, room_type, neighbourhood_group)
+
+modeldata$room_type <- as.factor(modeldata$room_type)
+modeldata$neighbourhood_group <- as.factor(modeldata$neighbourhood_group)
+
+set.seed(123)
+trainIndex <- sample(1:nrow(modeldata), 0.8 * nrow(modeldata))  
+traindata <- modeldata[trainIndex, ]
+testdata <- modeldata[-trainIndex, ]
+
+lrmodel <- lm(price ~ number_of_reviews + availability_365 + room_type + neighbourhood_group, data = traindata)
+
+predictions <- predict(lrmodel, newdata = testdata)
+
+comparison <- data.frame(Actual = testdata$price, Predicted = predictions)
+head(comparison)
+
+ggplot(comparison, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.5, color = "lightblue") +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  ggtitle("Actual vs Predicted Prices") +
+  xlab("Actual Price") +
+  ylab("Predicted Price") +
+  theme_minimal()
+
+summary(lrmodel)
+
+```
+
+
+## Observations from the Model
+**From our linear regression model, we can see that number of reviews, 
+room type, and neighborhood all have a significant influence on price, with 
+room type and neighborhood group having the largest impact on the price of an
+Airbnb. From our model fit R-squared value (.4562), there can be improvement. 
+We are ideally looking for over .7 for this value, so some factors could be
+missing. These could include, for example, proximity to public transportation
+stations, square footage, or proximity to restaurants or tourist destinations.**
+
+```{r}
+
+```
