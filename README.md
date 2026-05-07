@@ -4,6 +4,7 @@ NYC Airbnb Market Analysis — R
 Exploratory data analysis and linear regression modeling of New York City Airbnb listings, built for MSBA 615 (R for Analytics).
 Overview
 This project analyzes 48,000+ NYC Airbnb listings to identify pricing patterns across boroughs, room types, and availability. Includes data cleaning, outlier detection, visualization, and a predictive pricing model.
+
 What I Built
 
 Cleaned and preprocessed raw listing data: removed redundant columns, handled zero-price records, detected outliers using IQR method
